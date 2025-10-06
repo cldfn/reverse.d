@@ -61,7 +61,15 @@ func main() {
 
 	// Reverse proxy server
 	proxyHandler := server.NewReverseProxy(db)
-	var proxySrv *http.Server
+
+	var proxySrv *http.Server = &http.Server{
+		Addr:         fmt.Sprintf(":%d", *portArgValue),
+		Handler:      proxyHandler,
+		ReadTimeout:  time.Duration(*readTimeoutArg) * time.Second,
+		WriteTimeout: time.Duration(*writeTimeoutArg) * time.Second,
+	}
+
+	var proxySrvSecure *http.Server
 
 	if *tlsArgValue {
 
@@ -70,17 +78,10 @@ func main() {
 			log.Fatal(err)
 		}
 
-		proxySrv = &http.Server{
+		proxySrvSecure = &http.Server{
 			Addr:         fmt.Sprintf(":%d", *tlsPortArgValue),
 			Handler:      proxyHandler,
 			TLSConfig:    tlsCfg,
-			ReadTimeout:  time.Duration(*readTimeoutArg) * time.Second,
-			WriteTimeout: time.Duration(*writeTimeoutArg) * time.Second,
-		}
-	} else {
-		proxySrv = &http.Server{
-			Addr:         fmt.Sprintf(":%d", *portArgValue),
-			Handler:      proxyHandler,
 			ReadTimeout:  time.Duration(*readTimeoutArg) * time.Second,
 			WriteTimeout: time.Duration(*writeTimeoutArg) * time.Second,
 		}
@@ -99,19 +100,21 @@ func main() {
 	// Run proxy server
 	go func() {
 
-		if *tlsArgValue {
-			log.Printf("secure proxy listening on %s", proxySrv.Addr)
-			if err := proxySrv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+		log.Printf("proxy listening on %s", proxySrv.Addr)
+		if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("proxy server error: %v", err)
+		}
+	}()
+
+	if *tlsArgValue {
+		go func() {
+			log.Printf("secure proxy listening on %s", proxySrvSecure.Addr)
+			if err := proxySrvSecure.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				log.Fatalf("proxy server error TLS: %s", err.Error())
 			}
-		} else {
-			log.Printf("proxy listening on %s", proxySrv.Addr)
-			if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("proxy server error: %v", err)
-			}
-		}
 
-	}()
+		}()
+	}
 
 	// Graceful shutdown
 	sig := make(chan os.Signal, 1)

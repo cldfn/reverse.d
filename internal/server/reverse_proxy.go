@@ -40,7 +40,7 @@ func NewReverseProxy(db *sql.DB) http.Handler {
 			return
 		}
 
-		log.Printf(" --> proxy target  : %s", target)
+		// log.Printf(" --> proxy target  : %s", target)
 
 		proxy := httputil.NewSingleHostReverseProxy(u)
 		// adjust headers
