@@ -18,9 +18,12 @@ import (
 
 func main() {
 	// Paths are relative to the binary's working directory
-	dbPath := "./config.db"
-	socketPath := "./proxyd.sock"
-	certsDir := "./certs"
+
+	storagePath := "./storage"
+
+	dbPath := storagePath + "/config.db"
+	socketPath := storagePath + "/proxyd.sock"
+	certsDir := storagePath + "/certs"
 
 	portArgValue := flag.Int("port", 8080, "listening port")
 	tlsArgValue := flag.Bool("tls", false, "enable TLS")
@@ -73,7 +76,7 @@ func main() {
 
 	if *tlsArgValue {
 
-		tlsCfg, err := tls.TLSConfig("./certs")
+		tlsCfg, err := tls.TLSConfig(certsDir)
 		if err != nil {
 			log.Fatal(err)
 		}
