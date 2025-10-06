@@ -1,1 +1,4 @@
 reverse.d
+config.db
+proxyd
+proxyctl
