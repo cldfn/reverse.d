@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"github.com/cldfn/reverse.d/internal/control"
 	"github.com/cldfn/reverse.d/internal/server"
 	"github.com/cldfn/reverse.d/internal/store"
+	"github.com/cldfn/reverse.d/internal/tls"
 )
 
 func main() {
@@ -18,6 +21,15 @@ func main() {
 	dbPath := "./config.db"
 	socketPath := "./proxyd.sock"
 	certsDir := "./certs"
+
+	portArgValue := flag.Int("port", 8080, "listening port")
+	tlsArgValue := flag.Bool("tls", false, "enable TLS")
+	tlsPortArgValue := flag.Int("tls-port", 443, "TLS listening port")
+
+	readTimeoutArg := flag.Int("read-timeout", 30, "server read timeout in seconds")
+	writeTimeoutArg := flag.Int("write-timeout", 30, "server write timeout in seconds")
+
+	flag.Parse()
 
 	// Ensure certs dir exists
 	if err := os.MkdirAll(certsDir, 0700); err != nil {
@@ -49,27 +61,56 @@ func main() {
 
 	// Reverse proxy server
 	proxyHandler := server.NewReverseProxy(db)
-	proxySrv := &http.Server{
-		Addr:         ":8080",
-		Handler:      proxyHandler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+	var proxySrv *http.Server
+
+	if *tlsArgValue {
+
+		tlsCfg, err := tls.TLSConfig("./certs")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		proxySrv = &http.Server{
+			Addr:         fmt.Sprintf(":%d", *tlsPortArgValue),
+			Handler:      proxyHandler,
+			TLSConfig:    tlsCfg,
+			ReadTimeout:  time.Duration(*readTimeoutArg) * time.Second,
+			WriteTimeout: time.Duration(*writeTimeoutArg) * time.Second,
+		}
+	} else {
+		proxySrv = &http.Server{
+			Addr:         fmt.Sprintf(":%d", *portArgValue),
+			Handler:      proxyHandler,
+			ReadTimeout:  time.Duration(*readTimeoutArg) * time.Second,
+			WriteTimeout: time.Duration(*writeTimeoutArg) * time.Second,
+		}
 	}
 
 	// Run control server on unix socket
 	go func() {
 		log.Printf("control socket listening on %s", socketPath)
-		if err := controlSrv.Serve(l); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("control server error: %v", err)
+		{
+			if err := controlSrv.Serve(l); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("control server error: %v", err)
+			}
 		}
 	}()
 
 	// Run proxy server
 	go func() {
-		log.Printf("proxy listening on %s", proxySrv.Addr)
-		if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("proxy server error: %v", err)
+
+		if *tlsArgValue {
+			log.Printf("secure proxy listening on %s", proxySrv.Addr)
+			if err := proxySrv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("proxy server error TLS: %s", err.Error())
+			}
+		} else {
+			log.Printf("proxy listening on %s", proxySrv.Addr)
+			if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("proxy server error: %v", err)
+			}
 		}
+
 	}()
 
 	// Graceful shutdown

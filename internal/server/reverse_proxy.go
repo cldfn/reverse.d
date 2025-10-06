@@ -13,7 +13,9 @@ import (
 // It looks up the target for the request's Host from sqlite via db.
 func NewReverseProxy(db *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		host := r.Host
+
 		// strip optional port
 		if i := strings.Index(host, ":"); i != -1 {
 			host = host[:i]
@@ -37,6 +39,9 @@ func NewReverseProxy(db *sql.DB) http.Handler {
 			http.Error(w, "invalid target", http.StatusBadGateway)
 			return
 		}
+
+		log.Printf(" --> proxy target  : %s", target)
+
 		proxy := httputil.NewSingleHostReverseProxy(u)
 		// adjust headers
 		orig := proxy.Director

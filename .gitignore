@@ -2,3 +2,5 @@ reverse.d
 config.db
 proxyd
 proxyctl
+mock
+certs
